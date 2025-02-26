@@ -22,7 +22,7 @@ library(tibble)
 
 
 ```{r}
-EGM_data_subset <- read_excel("~/stats220/ECOCarls/EGM_subset.xlsx")
+EGM_data_subset <- read_excel("~/Downloads/EGM_subset.xlsx")
 
 ef <- filter(EGM_data_subset, farm == "EF")
 st <- filter(EGM_data_subset, farm == "ST") 
