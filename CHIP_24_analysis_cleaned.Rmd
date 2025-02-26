@@ -1,0 +1,342 @@
+---
+title: "chip_24_analysis_cleaned"
+output: html_document
+date: "2024-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(patchwork)
+library(rstatix)
+library(gt)
+library(rempsyc)
+library(flextable)
+```
+
+```{r}
+#upload soil analysis data from 2024
+
+CHIP <- read_excel("~/Downloads/CHIP_24_data_for_R.xlsx")
+
+CHIP <- rename(CHIP, SOM = LOI_percent_combusted, 
+               nitrate = `N_mg/L/kg_soil`)
+CHIP$depth <- as.character(CHIP$depth)
+```
+
+```{r}
+no_lf <- filter(CHIP, farm != "LF") # exclude data from larsen farm 
+
+# new dataset for each farm 
+fp <- filter(no_lf, farm == "FP") # feed the people 
+st <- filter(no_lf, farm == "ST") #salvatierra 
+oc <- filter(no_lf, farm == "OC") #organic compound 
+```
+
+
+```{r}
+#creating a table that shows resuts of anovas with treatment and depth as independent variables 
+
+columns_to_test <- c(5, 7, 9, 13, 14)
+datasets <- list(st = st, oc = oc, fp = fp)
+
+# Initialize an empty list to store results
+all_results <- list()
+
+# Loop through each dataset
+for (dataset_name in names(datasets)) {
+  dataset <- datasets[[dataset_name]]  # Select dataset
+
+# Perform anovas for depth and various soil analyses  
+
+results <- lapply(names(dataset)[columns_to_test], function(soil_qual) {
+  ANOVA <- aov(dataset[[soil_qual]] ~ dataset$sample_type * dataset$depth, na.action = na.omit, data = dataset)
+  anova_summary <- summary(ANOVA)[[1]]
+  
+    # Extract F-statistics and p-values
+  p_treatment <- anova_summary[["Pr(>F)"]][1]  
+  p_depth <- anova_summary[["Pr(>F)"]][2]  
+  p_interaction <- anova_summary[["Pr(>F)"]][3]  
+
+  data.frame(Farm = dataset_name, 
+             soil_qual = soil_qual, 
+             p_treatment = p_treatment,
+             p_depth = p_depth,
+             p_interaction = p_interaction,
+             Sig_Treatment = ifelse(p_treatment < 0.05, "Yes", "No"),
+             Sig_Depth = ifelse(p_depth < 0.05, "Yes", "No"),
+             Sig_Interaction = ifelse(p_interaction < 0.05, "Yes", "No"))
+})
+
+  # Combine results and store them
+  all_results[[dataset_name]] <- do.call(rbind, results)
+}
+
+# Combine all dataset results into a single dataframe
+results_df <- do.call(rbind, all_results) 
+                         
+ # Print results
+print(results_df)
+```
+
+
+```{r}
+#this is a table of t-tests, ignoring the effect of depth
+
+# Initialize an empty list to store results
+all_results_tt <- list()
+
+# Loop through each dataset
+for (dataset_name in names(datasets)) {
+  dataset <- datasets[[dataset_name]]  # Select dataset
+
+# Perform anovas for depth and various soil analyses  
+
+results_tt <- lapply(names(dataset)[columns_to_test], function(soil_qual) {
+  tt <- t.test(dataset[[soil_qual]] ~ dataset$sample_type, na.action = na.omit, data = dataset)
+  data.frame(farm = dataset_name, 
+             soil_qual = soil_qual, 
+             t_statistic = tt$statistic, 
+             p_value = tt$p.value,
+             Significant = ifelse(tt$p.value < 0.05, "Yes", "No"))  # Flag significant results
+})
+
+  # Combine results and store them
+  all_results_tt[[dataset_name]] <- do.call(rbind, results_tt)
+}
+
+# Combine all dataset results into a single dataframe
+results_tt_df <- do.call(rbind, all_results_tt) 
+                         
+ # Print results
+print(results_tt_df)
+```
+
+
+```{r}
+#now looking as SOM fractions 
+
+fractions <- read_excel("~/Downloads/heavy_light_for_R.xlsx", 
+     col_types = c("text", "text", "text", 
+         "numeric", "numeric", "numeric", 
+         "numeric", "numeric", "numeric", 
+         "numeric", "numeric", "numeric", 
+         "numeric", "numeric", "numeric", 
+         "numeric", "numeric", "numeric", 
+         "numeric", "numeric","numeric",
+         "numeric", "numeric","numeric"))
+
+
+ten <- filter(fractions, depth == "10")
+twenty <- filter(fractions, depth == "20")
+```
+
+```{r}
+
+MAOM_aov <- aov(percent_MAOM_R ~ treatment * depth, data = fractions) 
+summary(MAOM_aov) #p = 0.001 for treatment f = 14.6
+
+POM_aov <- aov(percent_POM ~ treatment * depth, data = fractions) 
+summary(POM_aov) # p value = 5.92e-09, f = 98.55 for depth and p = 0.0301, f = 5.49 for treatment 
+
+POM_top <- ggplot(data = ten) + 
+  geom_boxplot(aes(x = treatment, y = percent_POM)) + 
+  ylim(0.3, 2.2) + 
+  theme_bw()
+
+POM_bottom <- ggplot(data = twenty) + 
+  geom_boxplot(aes(x = treatment, y = percent_POM)) +
+  ylim(0.3, 2.2) +
+  theme_bw()
+
+POM_top + POM_bottom 
+  #ggsave("pom_depth.pdf") # figure used in agu poster 
+
+maom_top <- ggplot(data = ten) + 
+  geom_boxplot(aes(x = treatment, y = percent_MAOM_R)) +
+  ylim(8,13.5) +
+  theme_bw()
+
+maom_bot <- ggplot(data = twenty) + 
+  geom_boxplot(aes(x = treatment, y = percent_MAOM_R)) +
+  ylim(8,13.5) +
+  theme_bw()
+
+maom <- ggplot(data = fractions) + 
+  geom_boxplot(aes(x = treatment, y = percent_MAOM_R)) +
+  theme_bw()
+#ggsave("maom_fig.pdf") # figure used in agu poster 
+
+(POM_top + POM_bottom) / (maom_top + maom_bot)
+ggsave("fractions_fig24.pdf") #figure used in paper 
+
+t.test(percent_SOM ~ treatment, data = fractions) #p-value = 0.0006011
+```
+
+
+```{r}
+#now looking at the relationship between clay content and MAOM 
+
+t.test(CLAY ~ treatment, data = fractions) # p = .12
+
+lm_clay <- lm(CLAY ~ percent_MAOM_R, data = fractions)
+summary(lm_clay) # R^2 is -0.05, p = 0.86
+
+
+#following code creates table used in paper 
+
+oc_no.na <- oc %>% 
+  drop_na()
+
+min <- oc_no.na %>%
+  select(sample_type, depth, CLAY, SILT, SAND)
+
+se <- function(x) {
+  sd(x) / sqrt(length(x))
+}
+
+nice_texture <- min %>% 
+  group_by(sample_type, depth) %>% 
+  summarise(
+    Sand_mean = mean(SAND),
+    Sand_se = se(SAND),
+    Silt_mean = mean(SILT),
+    Silt_se = se(SILT),
+    Clay_mean = mean(CLAY),
+    Clay_se = se(CLAY))
+
+nice_texture_wide <- nice_texture %>%
+  select(sample_type, depth, Clay_mean, Clay_se, Silt_mean, Silt_se, Sand_mean, Sand_se)
+
+texture_table <- nice_table(nice_texture_wide, width = 1)
+save_as_image(x = texture_table, path = "texture_table.svg")
+
+
+mypath <- tempfile(fileext = ".docx")
+flextable::save_as_docx(nice_texture_wide, path = "nice_texture_wide.docx")
+```
+
+
+```{r}
+#basal diameter and height of hazelnut trees at salva tierra 
+
+tree <- read_excel("~/Downloads/ST_basal_diameter.xlsx", 
+    col_types = c("text", "text", "text", 
+        "text", "numeric", "text", "numeric"))
+
+tree_sub <- tree %>%
+  filter(!is.na(basal_diameter))
+
+table(tree$treatment) # n total = 1,238
+table(tree_sub$treatment) #n total = 327
+
+
+st.high <- ggplot(data = tree) +
+  geom_density(aes(x = height, color = treatment)) +
+  theme_classic() +
+  theme(legend.position = "none")
+t.test(height ~ treatment, data = tree) #p-value < 2.2e-16
+
+st.thick <- ggplot(data = tree_sub) +
+  geom_density(aes(x = basal_diameter, color = treatment)) +
+  xlim(0,30) +
+  theme_classic()
+t.test(basal_diameter ~ treatment, data = tree_sub) #p-value = 9.508e-08
+
+#organic compound data 
+
+oc_tree_subset <- read_excel("Downloads/oc_tree_data_24.xlsx", sheet = "subset")
+
+tree_sub_oc <- oc_tree %>%
+  filter(!is.na(BD))
+
+oc.high <- ggplot(data = oc_tree_subset) +
+  geom_density(aes(x = Height, color = treatment)) +
+  theme_classic()  +
+  theme(legend.position = "none")
+t.test(Height ~ treatment, data = oc_tree_subset) #p-value = 9.854e-06 - control trees are taller than in paddocks 
+
+oc.thick <- ggplot(data = oc_tree_subset) +
+  geom_density(aes(x = BD, color = treatment)) +
+  theme_classic() +
+  theme(legend.position = "none")
+t.test(BD ~ treatment, data = oc_tree_subset) #p-value = 6.015e-09 
+
+
+(st.high + st.thick) / (oc.high + oc.thick) #this is with a subset of data, excluding two paddocks that had lots of replanting 
+  ggsave("tree_density_plots_oc_st.pdf") 
+  
+# we ended up excluding data from organic compound because we think there was replanting in ALL paddocks. 
+  
+st.high / st.thick #figure used in paper 
+
+```
+
+```{r}
+#nitrate analysis. this is how we decided to throw out all the inorganic N data because some samples were sitting too long in the fridge. 
+
+ggplot(data = no_lf) +
+  geom_boxplot(aes(x = sample_type, y = nitrate, color = extract_storage))
+t.test(nitrate ~ extract_storage, data = no_lf) #p-value = 1.077e-05
+
+#fridge samples are consistently lower than freezer samples ... remove them from dataset 
+
+table(no_lf$extract_storage, no_lf$sample_type, no_lf$farm) #tells us how many samples went bed in the fridge.
+
+no_lf_freezer <- no_lf %>% 
+  filter(extract_storage == "freezer")
+
+st_freezer <- no_lf_freezer %>%
+  filter(farm == "ST")
+oc_freezer <- no_lf_freezer %>%
+  filter(farm == "OC")
+fp_freezer <- no_lf_freezer %>%
+  filter(farm == "FP")
+
+ggplot(data = st_freezer) +
+  geom_boxplot(aes(x = sample_type, y = nitrate))
+t.test(nitrate ~ sample_type, data = st_freezer) #p-value = 0.4559
+
+ggplot(data = oc_freezer) +
+  geom_boxplot(aes(x = sample_type, y = nitrate))
+t.test(nitrate ~ sample_type, data = oc_freezer) #p-value = 0.0005655
+
+ggplot(data = fp_freezer) +
+  geom_boxplot(aes(x = sample_type, y = nitrate))
+t.test(nitrate ~ sample_type, data = fp_freezer) #p-value = 0.5575
+
+```
+
+
+```{r}
+#in the end we realized we couldn't really do this comparison, because the samping was done differently between years
+
+root_biomass_comparison <- read_excel("Downloads/root_biomass_comparison.xlsx")
+
+root_biomass_comparison$year <-
+  as.character(root_biomass_comparison$year)
+
+roots_st <- root_biomass_comparison %>% 
+  filter(farm == "st")
+
+roots_oc <- root_biomass_comparison %>% 
+  filter(farm == "oc")
+
+ggplot(data = roots_oc) +
+  geom_boxplot(aes(x = year, y = root_biomass, color = treatment))
+
+ggplot(data = roots_st) +
+  geom_boxplot(aes(x = year, y = root_biomass, color = treatment))
+
+oc_root_aov <- aov(root_biomass ~ year * treatment, data = roots_oc)
+summary(oc_root_aov) #no effect of year on biomass
+
+st_root_aov <- aov(root_biomass ~ year * treatment, data = roots_st)
+summary(st_root_aov) #no effect of year on biomass
+
+```
+

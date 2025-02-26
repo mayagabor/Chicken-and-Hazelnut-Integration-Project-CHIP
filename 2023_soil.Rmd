@@ -1,0 +1,164 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-01-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(patchwork)
+```
+
+```{r}
+soil_23 <- read_excel("Downloads/SOM_C_N_data.xlsx")
+nitrogen <- read_excel("Downloads/inorg_N23.xlsx") %>% 
+  filter(Depth == 10)
+chix <- soil_23 %>% 
+  filter(treatment == "regen")
+
+chix$row <- as.character(chix$row)
+```
+
+```{r}
+oc23 <- filter(soil_23, location == "OC")
+st23 <- filter(soil_23, location == "ST")
+ocN <- filter(nitrogen, Farm == "OC")
+stN <- filter(nitrogen, Farm == "ST")
+```
+
+```{r}
+SOM.fig <- ggplot(data = soil_23) +
+  geom_boxplot(aes(x = location, y = SOM, fill = treatment)) +
+  scale_fill_grey() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+SOM.fig
+
+```
+
+```{r}
+C.fig <- ggplot(data = soil_23) +
+  geom_boxplot(aes(x = location, y = C, fill = treatment)) +
+  scale_fill_grey() +
+  theme_classic() 
+
+C.fig
+```
+
+```{r}
+N.fig <- ggplot(data = soil_23) +
+  geom_boxplot(aes(x = location, y = N, fill = treatment)) +
+  scale_fill_grey() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+N.fig
+```
+
+```{r}
+
+inorgN.fig <- ggplot(data = nitrogen) +
+  geom_boxplot(aes(x = Farm, y = Inorganic_N, fill = Treatment)) +
+  theme_classic() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("#D2D3D4", "#6D6E71"))
+
+inorgN.fig
+
+```
+
+```{r}
+(SOM.fig + C.fig)/(N.fig + inorgN.fig)
+ggsave("2023_soil_fig.pdf")
+```
+
+```{r}
+t.test(SOM ~ treatment, data = oc23) #p < 0.001, t = -8.2
+t.test(C ~ treatment, data = oc23) #p < 0.001, t = -7.2
+t.test(N ~ treatment, data = oc23) #p = 0.62, t = -0.5
+t.test(Inorganic_N ~ Treatment, data = ocN) #p = 0.001, t = -4.5 
+
+t.test(SOM ~ treatment, data = st23) #p = 0.0158, t = 2.6
+t.test(C ~ treatment, data = st23) #p = 0.264, t = 1.1
+t.test(N ~ treatment, data = st23) #p = 0.0376, t = -2.1
+t.test(Inorganic_N ~ Treatment, data = stN) #p = 0.77, t = -0.3 not sure if this was significant before I redid the figure but make sure I say its not in the paper
+```
+
+
+```{r}
+SOM.dist <- ggplot(data = chix) +
+  geom_boxplot(aes(x = location, y = SOM, fill = row)) +
+  scale_fill_grey() +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+```{r}
+C.dist <- ggplot(data = chix) +
+  geom_boxplot(aes(x = location, y = C, fill = row)) +
+  scale_fill_grey() +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+```{r}
+N.dist <- ggplot(data = chix) +
+  geom_boxplot(aes(x = location, y = N, fill = row)) +
+  scale_fill_grey() +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+```{r}
+SOM.dist/ C.dist / N.dist 
+
+#ggsave("2023_distance_fig.pdf")
+```
+
+
+```{r}
+st.chix <- chix %>% 
+  filter(location == "ST")
+oc.chix <- chix %>% 
+  filter(location == "OC")
+
+SOM.dist.st <- aov(SOM ~ row, data = st.chix) 
+summary(SOM.dist.st) #p< 0.001, f = 12.16
+tuk.som.st <- TukeyHSD(SOM.dist.st)
+tuk.som.st #2-1 p = 0.059, 3-1 p < 0.001, 3-2 p = 0.03
+
+C.dist.st <- aov(C ~ row, data = st.chix) 
+summary(C.dist.st) #p = 0.0015, f = 7.45
+tuk.c.st <- TukeyHSD(C.dist.st)
+tuk.c.st #2-1 p = 0.29, 3-1 p = 0.001, 3-2 p = 0.06
+
+N.dist.st <- aov(N ~ row, data = st.chix) 
+summary(N.dist.st) #p< 0.0432, f = 3.34
+tuk.n.st <- TukeyHSD(N.dist.st)
+tuk.n.st #2-1 p = 0.89, 3-1 p = 0.048, 3-2 p = 0.127
+
+SOM.dist.oc <- aov(SOM ~ row, data = oc.chix) 
+summary(SOM.dist.oc) #p = 0.752, f = 0.288
+tuk.som.oc <- TukeyHSD(SOM.dist.oc)
+tuk.som.oc 
+
+C.dist.oc <- aov(C ~ row, data = oc.chix) 
+summary(C.dist.oc) #p = 0.727, f = 0.321
+tuk.c.oc <- TukeyHSD(C.dist.oc)
+tuk.c.oc
+
+N.dist.oc <- aov(N ~ row, data = oc.chix) 
+summary(N.dist.oc) #p< 0.0432, f = 3.46
+tuk.n.oc <- TukeyHSD(N.dist.oc)
+tuk.n.oc #2-1 p = 0.357, 3-1 p = 0.034, 3-2 p = 0.44
+
+```
+
+
+

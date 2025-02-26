@@ -1,0 +1,452 @@
+---
+title: "CHIP_EGM"
+output: html_document
+date: "2024-09-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(plyr)
+library(dplyr)
+library(patchwork)
+library(tibbletime)
+library(purrr)
+library(tibble)
+```
+
+
+```{r}
+EGM_data_subset <- read_excel("~/stats220/ECOCarls/EGM_subset.xlsx")
+
+ef <- filter(EGM_data_subset, farm == "EF")
+st <- filter(EGM_data_subset, farm == "ST") 
+lf <- filter(EGM_data_subset, farm == "LF")
+oc <- filter(EGM_data_subset, farm == "OC")
+```
+
+
+```{r}
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, 
+                                   na.rm=FALSE, conf.interval=.95) {
+    length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)
+  }
+  datac <- plyr::ddply(data, groupvars, .drop=TRUE,
+                 .fun = function(xx, col) {
+                   c(N    = length2(xx[[col]], na.rm=na.rm),
+                     Fluxmean = mean   (xx[[col]], na.rm=na.rm),
+                     sd   = sd     (xx[[col]], na.rm=na.rm))
+                 },
+                 measurevar)
+  datac$se <- datac$sd / sqrt(datac$N)
+  
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval:
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+  
+  return(datac)
+}
+```
+
+
+```{r}
+#summary statistics for salva tierra: co2 flux, temperature and moisture 
+
+
+GasDataSummary_st <-  select(st, date, treament, carb_flux) %>%
+  summarySE(., measurevar="carb_flux", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+TempDataSummary_st <-  select(st, date, treament, Tsoil) %>%
+  summarySE(., measurevar="Tsoil", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+MoiDataSummary_st <-  select(st, date, treament, Msoil) %>%
+  summarySE(., measurevar="Msoil", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+avg_moist_st <- select(st, date, Msoil) %>%
+  summarySE(., measurevar="Msoil", groupvars=c("date"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+#and for organic compound 
+
+GasDataSummary_oc <-  select(oc, date, treament, carb_flux) %>%
+  summarySE(., measurevar="carb_flux", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+TempDataSummary_oc <-  select(oc, date, treament, Tsoil) %>%
+  summarySE(., measurevar="Tsoil", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+MoiDataSummary_oc <-  select(oc, date, treament, Msoil) %>%
+  summarySE(., measurevar="Msoil", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+avg_moist_oc <- select(oc, date, Msoil) %>%
+  summarySE(., measurevar="Msoil", groupvars=c("date"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+```
+
+
+```{r}
+
+GasDataSummary_st <- GasDataSummary_st%>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+st.gas <- ggplot(data = GasDataSummary_st) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treament), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treament), width=1, linetype = "solid") +
+  scale_color_manual(values = c("#D2D3D4", "#6D6E71")) + 
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none") 
+
+st.gas
+  
+st.moist <- ggplot() + 
+  geom_line(data = avg_moist_st, aes(x = date, y = Fluxmean)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))
+ 
+```
+
+
+```{r}
+GasDataSummary_oc <- GasDataSummary_oc %>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+
+oc.gas <- ggplot(data = GasDataSummary_oc) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treament), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treament), width=1, linetype = "solid") +
+  scale_color_manual(values = c("#D2D3D4", "#6D6E71")) + 
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none")
+
+ 
+  
+oc.moist <- ggplot() + 
+  geom_line(data = avg_moist_oc, aes(x = date, y = Fluxmean)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))
+ 
+
+oc.gas
+#ggsave("ocCO2fluxfig.pdf")
+```
+
+
+```{r}
+(st.moist + oc.moist) / (st.gas + oc.gas) +
+   plot_layout(heights = unit(c(5/ 3), c('cm', 'null')))
+
+#ggsave("gas_with_moisture.pdf")
+```
+
+
+```{r}
+GasDataSummary_ef <-  select(ef, date, treament, carb_flux) %>%
+  summarySE(., measurevar="carb_flux", groupvars=c("date","treament"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+ggplot(data = GasDataSummary_ef) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treament), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treament), width=.5, linetype = "solid") +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))
+
+#ggsave("efCO2fluxfig.pdf")
+```
+
+
+```{r}
+#2023 data
+
+GHG23 <- read_excel("Downloads/GHG_Data_23.xlsx") %>%
+  drop_na()
+```
+
+
+```{r}
+oc_ghg <- GHG23 %>% 
+  filter(location == "OC")
+
+oc_co2 <-  select(oc_ghg, date, treatment, CO2_flux) %>%
+  summarySE(., measurevar="CO2_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+oc_n2o <-  select(oc_ghg, date, treatment, N2O_flux) %>%
+  summarySE(., measurevar="N2O_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+oc_ch4 <-  select(oc_ghg, date, treatment, CH4_flux) %>%
+  summarySE(., measurevar= "CH4_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+```
+
+
+```{r}
+oc.co2 <- ggplot(data = oc_co2) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+   geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=1, linetype = "solid") +
+  scale_color_manual(values = c("#D2D3D4", "#6D6E71")) + 
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none")
+
+oc.co2
+
+oc.n2o <- ggplot(data = oc_n2o) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=.5, linetype = "solid") +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none")
+
+oc.ch4 <- ggplot(data = oc_ch4) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=.5, linetype = "solid") +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none")
+
+
+oc.co2 / oc.n2o / oc.ch4
+```
+
+```{r}
+st_ghg <- GHG23 %>% 
+  filter(location == "ST") %>%
+  filter(date <= as.POSIXct("2023-07-19"))
+
+st_co2 <-  select(st_ghg, date, treatment, CO2_flux) %>%
+  summarySE(., measurevar="CO2_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+st_n2o <-  select(st_ghg, date, treatment, N2O_flux) %>%
+  summarySE(., measurevar="N2O_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+
+st_ch4 <-  select(st_ghg, date, treatment, CH4_flux) %>%
+  summarySE(., measurevar= "CH4_flux", groupvars=c("date","treatment"), 
+            na.rm = TRUE,  conf.interval=.95)
+```
+
+```{r}
+st.co2 <- ggplot(data = st_co2) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=.5, linetype = "solid") +
+  scale_color_manual(values = c("#D2D3D4", "#6D6E71")) + 
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        legend.position = "none")
+
+st.co2
+
+st.n2o <- ggplot(data = st_n2o) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=.5, linetype = "solid") +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+st.ch4 <- ggplot(data = st_ch4) + 
+  geom_line(aes(x = date, y = Fluxmean, color = treatment), linewidth = 1) + 
+  geom_errorbar(aes(x = date, ymin=Fluxmean-se, ymax=Fluxmean+se, color = treatment), width=.5, linetype = "solid") +
+  theme(panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+
+st.co2 / st.n2o / st.ch4
+```
+
+```{r}
+(oc.co2 + st.co2) / (oc.n2o + st.n2o) / (oc.ch4 + st.ch4) 
+#ggsave("ghg_fig23.pdf")
+
+
+
+(oc.co2 + st.co2) /(oc.gas + st.gas) #this is the figure that will go in the paper. gas = 2024, co2 = 2023 data
+#ggsave("co2_23_24_fig.pdf")
+
+```
+
+```{r}
+#the next 4 code chunks run t tests individually for every date
+
+st_ghg <- st_ghg %>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+# List of response variables you want to test
+response_vars <- c("CO2_flux", "N2O_flux", "CH4_flux")
+
+# Perform t-tests for multiple response variables
+st_gas_tests <- st_ghg %>%
+  group_by(date) %>%
+  nest() %>%
+  mutate(
+   t_test_results = map(data, ~ {
+      # Run t-test for each response variable in the list
+      map_dfr(response_vars, function(response_var) {
+        # Make sure we use the correct nested data for each date
+        test <- t.test(as.formula(paste(response_var, "~ treatment")), data = .x)
+        
+        # Return a tibble with the test results
+        tibble(
+          response_var = response_var,
+          p_value = test$p.value,
+          statistic = test$statistic,
+          conf_low = test$conf.int[1],  # Lower bound of confidence interval
+          conf_high = test$conf.int[2]  # Upper bound of confidence interval
+        )
+      })
+    })
+  )
+
+
+# Unnest the results into separate columns for better viewing
+st_gas_table <- st_gas_tests %>% 
+  select(date, t_test_results) %>%
+  unnest(cols = c(t_test_results))
+
+print(st_gas_table) %>% 
+  filter(response_var == "CO2_flux")
+```
+
+
+```{r}
+oc_ghg <- oc_ghg %>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+# Perform t-tests for multiple response variables
+oc_gas_tests <- oc_ghg %>%
+  group_by(date) %>%
+  nest() %>%
+  mutate(
+   t_test_results = map(data, ~ {
+      # Run t-test for each response variable in the list
+      map_dfr(response_vars, function(response_var) {
+        # Make sure we use the correct nested data for each date
+        test <- t.test(as.formula(paste(response_var, "~ treatment")), data = .x)
+        
+        # Return a tibble with the test results
+        tibble(
+          response_var = response_var,
+          p_value = test$p.value,
+          statistic = test$statistic,
+          conf_low = test$conf.int[1],  # Lower bound of confidence interval
+          conf_high = test$conf.int[2]  # Upper bound of confidence interval
+        )
+      })
+    })
+  )
+
+
+# Unnest the results into separate columns for better viewing
+oc_gas_table <- oc_gas_tests %>% 
+  select(date, t_test_results) %>%
+  unnest(t_test_results)
+  
+print(oc_gas_table) %>% 
+  filter(response_var == "CO2_flux")
+```
+
+
+```{r}
+st <- st%>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+st_gas_tests24 <- st %>%
+  group_by(date) %>%
+  nest() %>%
+  mutate(
+    t_test_results = map(data, ~ {
+      
+       # Check if treatment has exactly two levels before running t-test
+      if (n_distinct(.x$treament) != 2) {
+        return(tibble(p_value = NA, statistic = NA, conf_low = NA, conf_high = NA))
+      }
+      
+      # Run t-test for CO2_flux
+      test <- t.test(carb_flux ~ treament, data = .x)
+      
+      # Return test results as a tibble
+      tibble(
+        p_value = test$p.value,
+        statistic = test$statistic,
+        conf_low = test$conf.int[1],  # Lower bound of confidence interval
+        conf_high = test$conf.int[2]  # Upper bound of confidence interval
+      )
+    })
+  ) %>%
+  unnest(cols = c(t_test_results))  # Unnest results for better readability
+
+# Print results
+print(st_gas_tests24) #significantly different on july 10 (p = 0.002) and 16 (p = 0.003). t stat = 3.28 and 3.26 respectively 
+```
+
+```{r}
+oc <- oc%>% 
+  mutate(date = as.Date(as.POSIXct(date, format = "%Y-%m-%d")))
+
+oc_gas_tests24 <- oc %>%
+  group_by(date) %>%
+  nest() %>%
+  mutate(
+    t_test_results = map(data, ~ {
+      
+       # Check if treatment has exactly two levels before running t-test
+      if (n_distinct(.x$treament) != 2) {
+        return(tibble(p_value = NA, statistic = NA, conf_low = NA, conf_high = NA))
+      }
+      
+      # Run t-test for CO2_flux
+      test <- t.test(carb_flux ~ treament, data = .x)
+      
+      # Return test results as a tibble
+      tibble(
+        p_value = test$p.value,
+        statistic = test$statistic,
+        conf_low = test$conf.int[1],  # Lower bound of confidence interval
+        conf_high = test$conf.int[2]  # Upper bound of confidence interval
+      )
+    })
+  ) %>%
+  unnest(cols = c(t_test_results))  # Unnest results for better readability
+
+# Print results
+print(oc_gas_tests24) #significantly different on june 17 (p=0.003, t=3.80), july 3 (p=0.0005, t=4.08), july 11 (p=0.002, t=3.77), and july 23 (p=0.034, t=8.49).
+```
+
+```{r}
+#testing for overall effect
+
+st24gasAOV <- aov(carb_flux ~ treament * date, data = st) 
+summary(st24gasAOV) #p=0.078
+
+oc24gasAOV <- aov(carb_flux ~ treament * date, data = oc) 
+summary(oc24gasAOV) #p<0.0001
+
+st23gasAOV <- aov(CO2_flux ~ treatment * date, data = st_ghg) 
+summary(st23gasAOV) #p=0.009
+
+oc23gasAOV <- aov(CO2_flux ~ treatment * date, data = oc_ghg) 
+summary(oc23gasAOV) #p=0.3
+```
+
+
+
+
